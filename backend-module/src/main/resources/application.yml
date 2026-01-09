@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: backend-module
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/megabarros}
+    username: ${DB_USER:megabarros}
+    password: ${DB_PASS:megabarros}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc.lob.non_contextual_creation: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+security:
+  jwt:
+    issuer: ${JWT_ISSUER:megabarros-v2}         # quem emite os tokens
+    secret: ${JWT_SECRET:change-me-change-me-change-me-change-me} # >= 32 bytes p/ HS256
+    access-exp-seconds: ${JWT_ACCESS_EXP_SECONDS:900}             # 15 min
+    refresh-exp-seconds: ${JWT_REFRESH_EXP_SECONDS:1209600}       # 14 dias
+    audience: ${JWT_AUDIENCE:megabarros-frontend}                 # quem consome os tokens
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
