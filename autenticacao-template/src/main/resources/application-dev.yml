@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: autenticacao-template
+  datasource:
+    url: jdbc:postgresql://localhost:5432/megabarros
+    username: megabarros
+    password: megabarros
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc.lob.non_contextual_creation: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+
+logging:
+  level:
+    root: INFO
+    br.com.jmcodestudio: DEBUG
+
