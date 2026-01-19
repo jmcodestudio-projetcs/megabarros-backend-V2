@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
 @TestMethodOrder(OrderAnnotation.class)
-class SeguradoraApiIT {
+class SeguradoraApiITest {
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES =

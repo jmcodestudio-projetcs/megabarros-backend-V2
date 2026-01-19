@@ -11,7 +11,6 @@ import br.com.jmcodestudio.megabarros.application.port.out.CurrentUserPort;
 import br.com.jmcodestudio.megabarros.application.port.out.apolice.ApoliceQueryPort;
 import br.com.jmcodestudio.megabarros.application.port.out.produto.ProdutoRepositoryPort;
 import br.com.jmcodestudio.megabarros.application.port.out.seguradora.SeguradoraRepositoryPort;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,30 +40,25 @@ public class SeguradoraUseCasesImpl implements
 
     @Override
     public Seguradora create(Seguradora seguradora) {
-        // Regra: CORRETOR não pode cadastrar seguradora
+        // Permissão
         String role = currentUser.role();
         if (role != null && role.equalsIgnoreCase("CORRETOR")) {
             throw new AccessDeniedException("Corretores não podem cadastrar seguradoras.");
         }
 
-        // cria seguradora
+        // Cria seguradora
         Seguradora created = seguradoraRepo.save(new Seguradora(null, seguradora.nome(), List.of()));
 
-        // cria produtos vinculados
+        // Cria produtos vinculados (se enviados)
+        List<Produto> produtosCriados = List.of();
         if (seguradora.produtos() != null) {
-            for (Produto p : seguradora.produtos()) {
-                Produto novo = new Produto(null, SeguradoraId.of(created.id().value()), p.nome(), p.tipo());
-                try {
-                    produtoRepo.save(novo);
-                } catch (DataIntegrityViolationException e) {
-                    // quebra de unicidade (id_seguradora, nome_produto)
-                    throw e;
-                }
-            }
+            produtosCriados = seguradora.produtos().stream()
+                    .map(p -> produtoRepo.save(new Produto(null, SeguradoraId.of(created.id().value()), p.nome(), p.tipo())))
+                    .toList();
         }
-        // retorna com lista atualizada
-        List<Produto> produtos = produtoRepo.findBySeguradoraId(created.id());
-        return new Seguradora(created.id(), created.nome(), produtos);
+
+        // Retorna com produtos populados
+        return new Seguradora(created.id(), created.nome(), produtosCriados);
     }
 
     @Override
@@ -77,7 +71,6 @@ public class SeguradoraUseCasesImpl implements
 
     @Override
     public Optional<Seguradora> update(SeguradoraId id, Seguradora updates) {
-        // Regra: CORRETOR não pode atualizar seguradora
         String role = currentUser.role();
         if (role != null && role.equalsIgnoreCase("CORRETOR")) {
             throw new AccessDeniedException("Corretores não podem atualizar seguradoras.");
@@ -94,21 +87,19 @@ public class SeguradoraUseCasesImpl implements
 
     @Override
     public void delete(SeguradoraId id) {
-        // Regra: CORRETOR não pode excluir seguradora
         String role = currentUser.role();
         if (role != null && role.equalsIgnoreCase("CORRETOR")) {
             throw new AccessDeniedException("Corretores não podem excluir seguradoras.");
         }
 
-        // bloqueia exclusão se há apólices vinculadas
+        // Bloqueios por apólices
         if (apoliceQuery.existsBySeguradoraId(id)) {
             throw new IllegalStateException("Não é possível excluir a seguradora: existem apólices vinculadas.");
         }
-        // excluir produtos vinculados
         List<Produto> produtos = produtoRepo.findBySeguradoraId(id);
         for (Produto p : produtos) {
             if (apoliceQuery.existsByProdutoId(p.id())) {
-                throw new IllegalStateException("Não é possível excluir a seguradora: existem apólices vinculadas a produtos desta seguradora.");
+                throw new IllegalStateException("Não é possível excluir a seguradora: apólices vinculadas a produtos.");
             }
             produtoRepo.deleteById(p.id());
         }

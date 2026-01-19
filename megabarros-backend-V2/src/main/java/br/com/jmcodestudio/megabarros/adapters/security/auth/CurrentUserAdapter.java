@@ -67,4 +67,10 @@ public class CurrentUserAdapter implements CurrentUserPort {
                 .findFirst()
                 .orElse(null);
     }
+
+    @Override
+    public String username() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null ? auth.getName() : null;
+    }
 }

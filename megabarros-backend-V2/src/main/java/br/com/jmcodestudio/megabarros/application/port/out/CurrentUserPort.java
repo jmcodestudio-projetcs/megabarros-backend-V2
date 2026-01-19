@@ -16,4 +16,5 @@ public interface CurrentUserPort {
     Long userId();
     String email();
     String role(); // ADMIN, CORRETOR, USUARIO (sem prefixo ROLE_)
+    String username();
 }

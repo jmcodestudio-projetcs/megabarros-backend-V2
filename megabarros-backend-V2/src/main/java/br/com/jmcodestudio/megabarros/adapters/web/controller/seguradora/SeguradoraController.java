@@ -8,6 +8,7 @@ import br.com.jmcodestudio.megabarros.adapters.web.dto.seguradora.SeguradoraResp
 import br.com.jmcodestudio.megabarros.adapters.web.dto.seguradora.SeguradoraUpdateRequest;
 import br.com.jmcodestudio.megabarros.application.domain.produto.Produto;
 import br.com.jmcodestudio.megabarros.application.domain.produto.ProdutoId;
+import br.com.jmcodestudio.megabarros.application.domain.seguradora.Seguradora;
 import br.com.jmcodestudio.megabarros.application.domain.seguradora.SeguradoraId;
 import br.com.jmcodestudio.megabarros.application.port.in.produto.CreateProdutoUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.produto.DeleteProdutoUseCase;
@@ -15,6 +16,7 @@ import br.com.jmcodestudio.megabarros.application.port.in.seguradora.CreateSegur
 import br.com.jmcodestudio.megabarros.application.port.in.seguradora.DeleteSeguradoraUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.seguradora.ListSeguradorasUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.seguradora.UpdateSeguradoraUseCase;
+import br.com.jmcodestudio.megabarros.application.port.out.apolice.ApoliceQueryPort;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,6 +36,7 @@ public class SeguradoraController {
     private final ListSeguradorasUseCase listUC;
     private final CreateProdutoUseCase createProdutoUC;
     private final DeleteProdutoUseCase deleteProdutoUC;
+    private final ApoliceQueryPort apoliceQuery;
     private final SeguradoraWebMapper webMapper;
 
     public SeguradoraController(CreateSeguradoraUseCase createUC,
@@ -42,6 +45,7 @@ public class SeguradoraController {
                                 ListSeguradorasUseCase listUC,
                                 CreateProdutoUseCase createProdutoUC,
                                 DeleteProdutoUseCase deleteProdutoUC,
+                                ApoliceQueryPort apoliceQuery,
                                 SeguradoraWebMapper webMapper) {
         this.createUC = createUC;
         this.updateUC = updateUC;
@@ -49,12 +53,13 @@ public class SeguradoraController {
         this.listUC = listUC;
         this.createProdutoUC = createProdutoUC;
         this.deleteProdutoUC = deleteProdutoUC;
+        this.apoliceQuery = apoliceQuery;
         this.webMapper = webMapper;
     }
 
     @GetMapping
     public ResponseEntity<List<SeguradoraResponse>> listar() {
-        var list = listUC.listAll().stream().map(webMapper::toResponse).toList();
+        var list = listUC.listAll().stream().map(this::toResponseWithCounts).toList();
         return ResponseEntity.ok(list);
     }
 
@@ -64,7 +69,7 @@ public class SeguradoraController {
     public ResponseEntity<SeguradoraResponse> criar(@Valid @RequestBody SeguradoraCreateRequest req) {
         var domain = webMapper.toDomain(req);
         var created = createUC.create(domain);
-        var resp = webMapper.toResponse(created);
+        var resp = toResponseWithCounts(created);
         return ResponseEntity.created(URI.create("/api/seguradoras/" + resp.idSeguradora())).body(resp);
     }
 
@@ -72,7 +77,7 @@ public class SeguradoraController {
     @PutMapping("/{id}")
     public ResponseEntity<SeguradoraResponse> atualizar(@PathVariable Integer id, @Valid @RequestBody SeguradoraUpdateRequest req) {
         return updateUC.update(new SeguradoraId(id), webMapper.toDomain(id, req))
-                .map(webMapper::toResponse)
+                .map(this::toResponseWithCounts)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -90,7 +95,7 @@ public class SeguradoraController {
         Produto domain = webMapper.toDomain(req);
         domain = new Produto(null, new SeguradoraId(id), domain.nome(), domain.tipo());
         var created = createProdutoUC.create(domain);
-        var resp = webMapper.toResponse(created);
+        var resp = toProdutoResponseWithCount(created);
         return ResponseEntity.created(URI.create("/api/produtos/" + resp.idProduto())).body(resp);
     }
 
@@ -99,5 +104,17 @@ public class SeguradoraController {
     public ResponseEntity<Void> excluirProduto(@PathVariable Integer id) {
         deleteProdutoUC.delete(new ProdutoId(id));
         return ResponseEntity.noContent().build();
+    }
+
+    private SeguradoraResponse toResponseWithCounts(Seguradora s) {
+        long segCount = apoliceQuery.countBySeguradoraId(s.id());
+        List<ProdutoResponse> produtos = (s.produtos() == null ? List.<ProdutoResponse>of()
+                : s.produtos().stream().map(this::toProdutoResponseWithCount).toList());
+        return new SeguradoraResponse(s.id().value(), s.nome(), segCount, produtos);
+    }
+
+    private ProdutoResponse toProdutoResponseWithCount(Produto p) {
+        long prodCount = (p.id() == null) ? 0 : apoliceQuery.countByProdutoId(p.id());
+        return new ProdutoResponse(p.id() != null ? p.id().value() : null, p.nome(), p.tipo(), prodCount);
     }
 }
