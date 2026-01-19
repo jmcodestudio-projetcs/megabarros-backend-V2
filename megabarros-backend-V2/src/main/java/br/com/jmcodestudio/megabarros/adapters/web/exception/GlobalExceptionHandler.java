@@ -5,10 +5,13 @@ import br.com.jmcodestudio.megabarros.application.policy.PasswordPolicy;
 import br.com.jmcodestudio.megabarros.application.usecase.exception.InvalidCredentialsException;
 import br.com.jmcodestudio.megabarros.application.usecase.exception.TokenInvalidException;
 import br.com.jmcodestudio.megabarros.application.usecase.exception.TooManyAttemptsException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.time.OffsetDateTime;
 import java.util.Map;
 
 /**
@@ -65,5 +68,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PasswordPolicy.WeakPasswordException.class)
     public ResponseEntity<?> weakPassword(PasswordPolicy.WeakPasswordException ex) {
         return ResponseEntity.badRequest().body(Map.of("error","weak_password", "message", ex.getMessage()));
+    }
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                        "timestamp", OffsetDateTime.now().toString(),
+                        "status", HttpStatus.FORBIDDEN.value(),
+                        "error", "Forbidden",
+                        "message", ex.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of(
+                        "timestamp", OffsetDateTime.now().toString(),
+                        "status", HttpStatus.CONFLICT.value(),
+                        "error", "Conflict",
+                        "message", ex.getMessage()
+                ));
     }
 }
