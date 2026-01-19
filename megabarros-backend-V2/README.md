@@ -214,22 +214,31 @@ Boas práticas ao reutilizar:
 
 ---
 
-## Próximos Passos
-- Adicionar documentação de API (OpenAPI/Swagger).
-- Incluir rate limiting distribuído (Redis) para ambientes de produção.
-- Adicionar testes de integração com Testcontainers ativados.
-- Integrar CI (GitHub Actions) para build/test.
+## Arquitetura e pacotes usados:
 
----
+- application
+    - domain: `corretor/Corretor`
+    - port
+        - in: casos de uso (interfaces)
+        - out: `CorretorRepositoryPort` (já existe `CurrentUserPort` reutilizado)
+    - usecase: `CorretorUseCasesImpl` (orquestra os ports)
+- adapters
+    - persistence.jpa
+        - entity: `CorretorEntity`
+        - repository: `CorretorJpaRepository`
+        - adapter: `CorretorRepositoryAdapter` (implementa `CorretorRepositoryPort`)
+        - mapper: `CorretorPersistenceMapper` (MapStruct)
+    - web
+        - controller: `CorretorController`
+        - dto: `web/dto/corretor/*`
+        - mapper: `CorretorWebMapper` (MapStruct)
+- resources
+    - db/migration: `V6__update_corretor_usuario_bigint.sql` (se necessário, para alinhar FK ao `usuario.id_usuario BIGINT`)
 
-## Troubleshooting
-- Erro de placeholders (ex: `${security.jwt.issuer}`):
-  - Certifique-se de que `.env` existe e contém `JWT_*`.
-  - Verifique `EnvConfig` está presente e é carregado (está em `infrastructure.config`).
-- Problemas com porta/management:
-  - `server.port` é resolvido via `PORT` no `.env` (fallback 8080).
-- Banco não conecta:
-  - Veja `spring.datasource.*` e se PostgreSQL está rodando.
+Observações:
+- Reutiliza `CurrentUserPort` existente: `Long userId(), String email(), String role()`.
+- Usa `Long` para `usuarioId` no domínio e persistência. O `idCorretor` continua `Integer` (como no baseline).
+- PreAuthorize mantém `hasRole('CORRETOR')` (Spring adiciona prefixo `ROLE_`).
 
 ---
 
