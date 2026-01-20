@@ -1,11 +1,14 @@
 package br.com.jmcodestudio.megabarros.adapters.web;
 
+import br.com.jmcodestudio.megabarros.adapters.web.support.JwtTestUtils;
+import br.com.jmcodestudio.megabarros.application.port.out.TokenServicePort;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -18,6 +21,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Map;
 
@@ -27,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @Testcontainers
 @SpringBootTest
-@AutoConfigureMockMvc(addFilters = false)
+@AutoConfigureMockMvc // filtros ATIVOS
 @ActiveProfiles("test")
 @TestMethodOrder(OrderAnnotation.class)
 class ApoliceApiITest {
@@ -50,12 +54,12 @@ class ApoliceApiITest {
         registry.add("spring.flyway.schemas", () -> "public");
         registry.add("spring.flyway.defaultSchema", () -> "public");
 
-        // Propriedades mínimas de JWT caso algum bean as leia
-        registry.add("security.jwt.secret", () -> "test-secret-32-bytes-minimum-1234567890");
-        registry.add("security.jwt.issuer", () -> "megabarros-v2");
-        registry.add("security.jwt.audience", () -> "megabarros-frontend");
-        registry.add("security.jwt.access-token.ttl-minutes", () -> "60");
-        registry.add("security.jwt.refresh-token.ttl-days", () -> "14");
+        // Propriedades JWT usadas pelo JwtTokenService
+        registry.add("JWT_ISSUER", () -> "megabarros-v2");
+        registry.add("JWT_AUDIENCE", () -> "megabarros-frontend");
+        registry.add("JWT_SECRET", () -> "test-secret-32-bytes-minimum-1234567890");
+        registry.add("JWT_ACCESS_EXP_SECONDS", () -> "3600");
+        registry.add("JWT_REFRESH_EXP_SECONDS", () -> "1209600");
     }
 
     @Autowired
@@ -66,6 +70,12 @@ class ApoliceApiITest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @Autowired
+    JwtTestUtils jwt;
+
+    @Autowired
+    TokenServicePort tokens;
 
     Long usuarioId;
     Integer corretorId;
@@ -109,7 +119,6 @@ class ApoliceApiITest {
         """, Integer.class, usuarioId);
         assertThat(corretorId).isNotNull();
 
-        // cliente NÃO possui coluna 'uf' no baseline; inclua email/telefone
         clienteId = jdbc.queryForObject("""
             INSERT INTO cliente (nome_cliente, cpf_cnpj, email, telefone)
             VALUES ('Cliente Teste', '00000000001', 'cliente.teste@example.com', '(11) 90000-0000')
@@ -134,6 +143,7 @@ class ApoliceApiITest {
         """, Integer.class, seguradoraId);
         assertThat(produtoId).isNotNull();
     }
+
 
     private String criarApoliceJson(String numero,
                                     LocalDate emissao,
@@ -350,4 +360,128 @@ class ApoliceApiITest {
                         .content(body))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    @Order(6)
+    @WithMockUser(username = "admin.teste@example.com", roles = {"ADMIN"})
+    void shouldRejectInvalidVigencia() throws Exception {
+        // criar apólice com vigência fim < início
+        String body = objectMapper.writeValueAsString(Map.of(
+                "numeroApolice", "APO-INV-001",
+                "dataEmissao", LocalDate.now().toString(),
+                "vigenciaInicio", LocalDate.now().plusDays(10).toString(),
+                "vigenciaFim", LocalDate.now().plusDays(5).toString(),
+                "valor", new BigDecimal("1000.00"),
+                "comissaoPercentual", new BigDecimal("10.00"),
+                "tipoContrato", "ANUAL",
+                "idCorretorCliente", corretorClienteId,
+                "idProduto", produtoId,
+                "idSeguradora", seguradoraId
+        ));
+
+        mockMvc.perform(post("/api/apolices")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(7)
+    @WithMockUser(username = "admin.teste@example.com", roles = {"ADMIN"})
+    void shouldRejectDuplicateNumeroApolice() throws Exception {
+        // cria primeira apólice
+        String body1 = criarApoliceJson(
+                "APO-DUP-001", LocalDate.now(), LocalDate.now(), LocalDate.now().plusYears(1),
+                new BigDecimal("1000.00"), new BigDecimal("10.00"), "ANUAL",
+                corretorClienteId, produtoId, seguradoraId
+        );
+        mockMvc.perform(post("/api/apolices")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body1))
+                .andExpect(status().isCreated());
+
+        // tenta segunda com mesmo número
+        String body2 = criarApoliceJson(
+                "APO-DUP-001", LocalDate.now(), LocalDate.now(), LocalDate.now().plusYears(1),
+                new BigDecimal("1200.00"), new BigDecimal("9.00"), "ANUAL",
+                corretorClienteId, produtoId, seguradoraId
+        );
+        mockMvc.perform(post("/api/apolices")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body2))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @Order(8)
+    @WithMockUser(username = "admin.teste@example.com", roles = {"ADMIN"})
+    void cancelShouldClosePreviousStatusAndCreateCanceled() throws Exception {
+        // cria apólice
+        String body = criarApoliceJson(
+                "APO-CAN-001", LocalDate.now(), LocalDate.now(), LocalDate.now().plusYears(1),
+                new BigDecimal("800.00"), new BigDecimal("12.00"), "ANUAL",
+                corretorClienteId, produtoId, seguradoraId
+        );
+        Integer apoliceId = objectMapper.readValue(
+                        mockMvc.perform(post("/api/apolices")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(body))
+                                .andExpect(status().isCreated())
+                                .andReturn().getResponse().getContentAsString(), Map.class)
+                .get("idApolice") instanceof Integer i ? i : null;
+        assertThat(apoliceId).isNotNull();
+
+        // cancela
+        mockMvc.perform(post("/api/apolices/{id}/cancel", apoliceId))
+                .andExpect(status().isNoContent());
+
+        // verifica status atual CANCELADA
+        mockMvc.perform(get("/api/apolices/{id}", apoliceId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statusAtual").value("CANCELADA"));
+
+        // verifica no banco: existe ATIVA com data_fim preenchida e CANCELADA com data_fim nula
+        Integer ativaSemFim = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM apolice_status 
+            WHERE id_apolice = ? AND status = 'ATIVA' AND data_fim IS NOT NULL
+        """, Integer.class, apoliceId);
+        Integer canceladaSemFim = jdbc.queryForObject("""
+            SELECT COUNT(*) FROM apolice_status 
+            WHERE id_apolice = ? AND status = 'CANCELADA' AND data_fim IS NULL
+        """, Integer.class, apoliceId);
+
+        assertThat(ativaSemFim).isEqualTo(1);
+        assertThat(canceladaSemFim).isEqualTo(1);
+    }
+
+    @Test
+    @Order(9)
+    @WithMockUser(username = "admin.teste@example.com", roles = {"ADMIN"})
+    void shouldReturnBadRequestOnMissingRequiredFields() throws Exception {
+        // Falta numeroApolice e datas inválidas -> 400
+        String body = objectMapper.writeValueAsString(Map.of(
+                "valor", new BigDecimal("1000.00"),
+                "comissaoPercentual", new BigDecimal("10.00"),
+                "tipoContrato", "ANUAL",
+                "idCorretorCliente", corretorClienteId,
+                "idProduto", produtoId,
+                "idSeguradora", seguradoraId
+        ));
+        mockMvc.perform(post("/api/apolices")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(10)
+    void shouldListApolicesWithBearerToken() throws Exception {
+        // Gera token ADMIN para o usuário criado no setup
+        String token = tokens.generateAccessToken(usuarioId, "admin.teste@example.com", "ADMIN", Map.of(), Instant.now());
+
+        mockMvc.perform(get("/api/apolices")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
 }

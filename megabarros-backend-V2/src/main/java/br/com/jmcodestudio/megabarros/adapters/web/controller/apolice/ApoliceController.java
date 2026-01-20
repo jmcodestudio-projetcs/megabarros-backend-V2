@@ -65,9 +65,7 @@ public class ApoliceController {
     @PreAuthorize("hasAnyRole('ADMIN','USUARIO','CORRETOR')")
     @GetMapping("/{id}")
     public ResponseEntity<ApoliceResponse> buscar(@PathVariable Integer id) {
-        return listUC.listAll().stream()
-                .filter(a -> a.id().value().equals(id))
-                .findFirst()
+        return listUC.getById(new ApoliceId(id))
                 .map(webMapper::toResponse)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());

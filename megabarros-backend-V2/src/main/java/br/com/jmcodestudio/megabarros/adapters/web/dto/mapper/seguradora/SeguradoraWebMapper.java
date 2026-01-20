@@ -6,33 +6,36 @@ import br.com.jmcodestudio.megabarros.adapters.web.dto.seguradora.SeguradoraCrea
 import br.com.jmcodestudio.megabarros.adapters.web.dto.seguradora.SeguradoraResponse;
 import br.com.jmcodestudio.megabarros.adapters.web.dto.seguradora.SeguradoraUpdateRequest;
 import br.com.jmcodestudio.megabarros.application.domain.produto.Produto;
-import br.com.jmcodestudio.megabarros.application.domain.produto.ProdutoId;
 import br.com.jmcodestudio.megabarros.application.domain.seguradora.Seguradora;
 import br.com.jmcodestudio.megabarros.application.domain.seguradora.SeguradoraId;
-import org.mapstruct.*;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.mapstruct.ReportingPolicy;
 
 import java.util.List;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface SeguradoraWebMapper {
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "nome", source = "nomeSeguradora")
-    @Mapping(target = "produtos", source = "produtos")
-    Seguradora toDomain(SeguradoraCreateRequest req);
+    // Criação: usa nomeSeguradora do request; produtos nunca nulos
+    default Seguradora toDomain(SeguradoraCreateRequest req) {
+        List<Produto> produtos = (req.produtos() == null)
+                ? List.of()
+                : req.produtos().stream().map(this::toDomain).toList();
+        return new Seguradora(null, req.nomeSeguradora(), produtos);
+    }
 
-    @Mapping(target = "id", expression = "java(new SeguradoraId(id))")
-    @Mapping(target = "nome", source = "req.nomeSeguradora")
-    @Mapping(target = "produtos", ignore = true)
-    Seguradora toDomain(Integer id, SeguradoraUpdateRequest req);
+    // Atualização: usa nomeSeguradora; gestão de produtos é por endpoints próprios
+    default Seguradora toDomain(Integer id, SeguradoraUpdateRequest req) {
+        return new Seguradora(new SeguradoraId(id), req.nomeSeguradora(), List.of());
+    }
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "seguradoraId", ignore = true)
-    @Mapping(target = "nome", source = "nomeProduto")
-    @Mapping(target = "tipo", source = "tipoProduto")
-    Produto toDomain(ProdutoRequest req);
+    // Produto do request -> domínio
+    default Produto toDomain(ProdutoRequest req) {
+        return new Produto(null, null, req.nomeProduto(), req.tipoProduto());
+    }
 
-    // Para responses com contagem, o controller monta manualmente usando helper
+    // Responses: MapStruct gera implementação; apoliceCount preenchido no controller
     @Mapping(target = "idProduto", source = "id.value")
     @Mapping(target = "nomeProduto", source = "nome")
     @Mapping(target = "tipoProduto", source = "tipo")
@@ -44,15 +47,4 @@ public interface SeguradoraWebMapper {
     @Mapping(target = "apoliceCount", ignore = true)
     @Mapping(target = "produtos", ignore = true)
     SeguradoraResponse toResponse(Seguradora domain);
-
-    default List<Produto> toDomainProdutos(List<ProdutoRequest> reqs) {
-        if (reqs == null) return List.of();
-        return reqs.stream().map(this::toDomain).toList();
-    }
-
-    @Named("toSegId")
-    default SeguradoraId toSegId(Integer id) { return id == null ? null : new SeguradoraId(id); }
-
-    @Named("toProdId")
-    default ProdutoId toProdId(Integer id) { return id == null ? null : new ProdutoId(id); }
 }

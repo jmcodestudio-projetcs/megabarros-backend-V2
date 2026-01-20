@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/seguradoras")
@@ -59,7 +60,27 @@ public class SeguradoraController {
 
     @GetMapping
     public ResponseEntity<List<SeguradoraResponse>> listar() {
-        var list = listUC.listAll().stream().map(this::toResponseWithCounts).toList();
+        var seguradoras = listUC.listAll();
+        // ids para agregação
+        var segIds = seguradoras.stream().map(s -> s.id()).toList();
+        var prodIds = seguradoras.stream()
+                .flatMap(s -> (s.produtos() == null ? List.<Produto>of() : s.produtos()).stream())
+                .map(Produto::id)
+                .toList();
+
+        Map<Integer, Long> segCounts = apoliceQuery.countBySeguradoraIds(segIds);
+        Map<Integer, Long> prodCounts = apoliceQuery.countByProdutoIds(prodIds);
+
+        var list = seguradoras.stream().map(s -> {
+            long segCount = segCounts.getOrDefault(s.id().value(), 0L);
+            List<ProdutoResponse> produtos = (s.produtos() == null ? List.<ProdutoResponse>of()
+                    : s.produtos().stream().map(p -> {
+                long prodCount = prodCounts.getOrDefault(p.id().value(), 0L);
+                return new ProdutoResponse(p.id().value(), p.nome(), p.tipo(), prodCount);
+            }).toList());
+            return new SeguradoraResponse(s.id().value(), s.nome(), segCount, produtos);
+        }).toList();
+
         return ResponseEntity.ok(list);
     }
 

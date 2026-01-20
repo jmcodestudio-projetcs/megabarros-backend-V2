@@ -1,7 +1,9 @@
 package br.com.jmcodestudio.megabarros.adapters.security.auth;
 
+import br.com.jmcodestudio.megabarros.adapters.security.jwt.JwtAuthenticationFilter;
 import br.com.jmcodestudio.megabarros.application.port.out.CurrentUserPort;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
@@ -39,10 +41,13 @@ public class CurrentUserAdapter implements CurrentUserPort {
     @Override
     public Long userId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getPrincipal() == null) return null;
-        if (auth.getPrincipal() instanceof br.com.jmcodestudio.megabarros.adapters.security.jwt.JwtAuthenticationFilter.Principal p) {
+        if (auth == null) return null;
+
+        Object principal = auth.getPrincipal();
+        if (principal instanceof JwtAuthenticationFilter.Principal p) {
             return p.userId();
         }
+        // Em testes com @WithMockUser, não há userId no principal
         return null;
     }
 
@@ -59,18 +64,24 @@ public class CurrentUserAdapter implements CurrentUserPort {
     @Override
     public String role() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getAuthorities() == null) return null;
+        if (auth == null) return null;
         return auth.getAuthorities().stream()
-                .map(a -> a.getAuthority())
-                .filter(a -> a != null && a.startsWith("ROLE_"))
-                .map(a -> a.substring("ROLE_".length()))
+                .map(GrantedAuthority::getAuthority)
                 .findFirst()
+                .map(a -> a.replace("ROLE_", ""))
                 .orElse(null);
     }
 
     @Override
     public String username() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : null;
+        if (auth == null) return null;
+
+        Object principal = auth.getPrincipal();
+        if (principal instanceof JwtAuthenticationFilter.Principal p) {
+            return p.email();
+        }
+        // @WithMockUser: retorna o nome do usuário (email definido no teste)
+        return auth.getName();
     }
 }

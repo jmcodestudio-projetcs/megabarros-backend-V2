@@ -18,4 +18,16 @@ public interface ApoliceExistenceRepository extends Repository<ApoliceEntity, In
 
     @Query(value = "SELECT COUNT(*) FROM apolice WHERE id_produto = :prodId", nativeQuery = true)
     long countByProdutoId(@Param("prodId") Integer prodId);
+
+    // Novo: verifica se há apólice ATIVA para o cliente via vínculo corretor_cliente e status atual sem data_fim
+    @Query(value = """
+        SELECT COUNT(*) > 0
+        FROM apolice a
+        JOIN corretor_cliente cc ON cc.id_corretor_cliente = a.id_corretor_cliente
+        JOIN apolice_status s ON s.id_apolice = a.id_apolice
+        WHERE cc.id_cliente = :clienteId
+          AND s.data_fim IS NULL
+          AND s.status = 'ATIVA'
+        """, nativeQuery = true)
+    boolean existsActiveByClienteId(@Param("clienteId") Integer clienteId);
 }

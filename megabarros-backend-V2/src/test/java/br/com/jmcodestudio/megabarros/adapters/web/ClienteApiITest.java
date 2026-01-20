@@ -1,11 +1,13 @@
 package br.com.jmcodestudio.megabarros.adapters.web;
 
+import br.com.jmcodestudio.megabarros.application.port.out.TokenServicePort;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -17,6 +19,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Map;
 
@@ -26,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @Testcontainers
 @SpringBootTest
-@AutoConfigureMockMvc(addFilters = false)
+@AutoConfigureMockMvc // filtros ATIVOS
 @ActiveProfiles("test")
 @TestMethodOrder(OrderAnnotation.class)
 class ClienteApiITest {
@@ -48,16 +51,20 @@ class ClienteApiITest {
         registry.add("spring.jpa.properties.hibernate.default_schema", () -> "public");
         registry.add("spring.flyway.schemas", () -> "public");
         registry.add("spring.flyway.defaultSchema", () -> "public");
-        registry.add("security.jwt.secret", () -> "test-secret-32-bytes-minimum-1234567890");
-        registry.add("security.jwt.issuer", () -> "megabarros-v2");
-        registry.add("security.jwt.audience", () -> "megabarros-frontend");
-        registry.add("security.jwt.access-token.ttl-minutes", () -> "60");
-        registry.add("security.jwt.refresh-token.ttl-days", () -> "14");
+
+        // Propriedades JWT usadas pelo JwtTokenService
+        registry.add("JWT_ISSUER", () -> "megabarros-v2");
+        registry.add("JWT_AUDIENCE", () -> "megabarros-frontend");
+        registry.add("JWT_SECRET", () -> "test-secret-32-bytes-minimum-1234567890");
+        registry.add("JWT_ACCESS_EXP_SECONDS", () -> "3600");
+        registry.add("JWT_REFRESH_EXP_SECONDS", () -> "1209600");
     }
 
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper objectMapper;
+    @Autowired
+    TokenServicePort tokens;
 
     Long usuarioIdAdmin;
     Long usuarioIdCorretor;
@@ -176,24 +183,66 @@ class ClienteApiITest {
     @Test
     @Order(3)
     @WithMockUser(username = "corretor@example.com", roles = {"CORRETOR"})
-    void corretorShouldNotSeeUnlinkedCliente() throws Exception {
+    void corretorShouldForbidUpdateUnlinkedClienteEvenForContato() throws Exception {
         Integer outroCliente = jdbc.queryForObject("""
             INSERT INTO cliente (nome_cliente, cpf_cnpj, data_nascimento, email, telefone, ativo)
             VALUES ('Outro', '00000000002', '1992-02-02', 'outro@example.com', '(11) 90000-0002', true)
             RETURNING id_cliente
         """, Integer.class);
 
-        mockMvc.perform(get("/api/clientes/{id}", outroCliente))
+        String contato = objectMapper.writeValueAsString(Map.of(
+                "email", "proibido@example.com",
+                "telefone", "(11) 97777-0000"
+        ));
+        mockMvc.perform(put("/api/clientes/{id}", outroCliente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contato))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     @Order(4)
     @WithMockUser(username = "admin@example.com", roles = {"ADMIN"})
-    void adminShouldDeactivateCliente() throws Exception {
+    void adminShouldBlockDeactivateClienteWithMultipleActiveApolicesThenAllowAfterCancel() throws Exception {
+        // cria seguradora e produto
+        Integer segId = jdbc.queryForObject("INSERT INTO seguradora (nome_seguradora) VALUES ('Seg Test') RETURNING id_seguradora", Integer.class);
+        Integer prodId = jdbc.queryForObject("INSERT INTO produto (nome_produto, tipo_produto, id_seguradora) VALUES ('Prod Test', 'AUTO', ?) RETURNING id_produto", Integer.class, segId);
+
+        Integer ccId = jdbc.queryForObject("SELECT id_corretor_cliente FROM corretor_cliente WHERE id_cliente = ?", Integer.class, clienteIdVinculado);
+        assertThat(ccId).isNotNull();
+
+        // duas apólices ATIVAS
+        jdbc.update("""
+            INSERT INTO apolice (numero_apolice, data_emissao, vigencia_inicio, vigencia_fim, valor, comissao_percentual, tipo_contrato,
+                                 id_corretor_cliente, id_produto, id_seguradora)
+            VALUES ('APO-ATIVA-001', CURRENT_DATE, CURRENT_DATE, CURRENT_DATE + INTERVAL '1 year', 1000.00, 10.00, 'ANUAL', ?, ?, ?)
+        """, ccId, prodId, segId);
+        jdbc.update("""
+            INSERT INTO apolice (numero_apolice, data_emissao, vigencia_inicio, vigencia_fim, valor, comissao_percentual, tipo_contrato,
+                                 id_corretor_cliente, id_produto, id_seguradora)
+            VALUES ('APO-ATIVA-002', CURRENT_DATE, CURRENT_DATE, CURRENT_DATE + INTERVAL '1 year', 1200.00, 9.50, 'ANUAL', ?, ?, ?)
+        """, ccId, prodId, segId);
+
+        Integer apoliceId1 = jdbc.queryForObject("SELECT id_apolice FROM apolice WHERE numero_apolice = 'APO-ATIVA-001'", Integer.class);
+        Integer apoliceId2 = jdbc.queryForObject("SELECT id_apolice FROM apolice WHERE numero_apolice = 'APO-ATIVA-002'", Integer.class);
+        jdbc.update("INSERT INTO apolice_status (id_apolice, status, data_inicio) VALUES (?, 'ATIVA', now())", apoliceId1);
+        jdbc.update("INSERT INTO apolice_status (id_apolice, status, data_inicio) VALUES (?, 'ATIVA', now())", apoliceId2);
+
+        // tenta desativar -> 409
+        mockMvc.perform(post("/api/clientes/{id}/desativar", clienteIdVinculado))
+                .andExpect(status().isConflict());
+
+        // cancela ambas apólices
+        mockMvc.perform(post("/api/apolices/{id}/cancel", apoliceId1))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/apolices/{id}/cancel", apoliceId2))
+                .andExpect(status().isNoContent());
+
+        // agora deve permitir desativar -> 204
         mockMvc.perform(post("/api/clientes/{id}/desativar", clienteIdVinculado))
                 .andExpect(status().isNoContent());
 
+        // verifica ativo=false
         mockMvc.perform(get("/api/clientes/{id}", clienteIdVinculado))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ativo").value(false));
@@ -212,5 +261,109 @@ class ClienteApiITest {
 
         mockMvc.perform(post("/api/clientes/{id}/desativar", clienteIdVinculado))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(6)
+    @WithMockUser(username = "admin@example.com", roles = {"ADMIN"})
+    void shouldReturnBadRequestOnInvalidClientePayload() throws Exception {
+        // Falta campos obrigatórios -> 400
+        String body = objectMapper.writeValueAsString(Map.of(
+                "nome", "", // NotBlank
+                "cpfCnpj", "", // NotBlank
+                "email", "invalido", // Email
+                "telefone", "" // NotBlank
+                // dataNascimento ausente
+        ));
+        mockMvc.perform(post("/api/clientes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(7)
+    @WithMockUser(username = "admin@example.com", roles = {"ADMIN"})
+    void deactivateShouldFailWhenAnyActiveApoliceExistsAndSucceedAfterCancelAll() throws Exception {
+        // cria cliente novo
+        String body = objectMapper.writeValueAsString(Map.of(
+                "nome", "Cliente C",
+                "cpfCnpj", "11122233344",
+                "dataNascimento", LocalDate.of(1990, 1, 1).toString(),
+                "email", "cliente.c@example.com",
+                "telefone", "(11) 90000-0003"
+        ));
+        var mvcRes = mockMvc.perform(post("/api/clientes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Integer idCliente = (Integer) objectMapper.readValue(mvcRes.getResponse().getContentAsString(), Map.class).get("idCliente");
+
+        // vincula ao corretor existente
+        jdbc.update("INSERT INTO corretor_cliente (id_corretor, id_cliente) VALUES (?, ?)", corretorId, idCliente);
+
+        // seguradora/produto
+        Integer segId = jdbc.queryForObject("INSERT INTO seguradora (nome_seguradora) VALUES ('Seg Test 2') RETURNING id_seguradora", Integer.class);
+        Integer prodId = jdbc.queryForObject("INSERT INTO produto (nome_produto, tipo_produto, id_seguradora) VALUES ('Prod Test 2', 'AUTO', ?) RETURNING id_produto", Integer.class, segId);
+        Integer ccId = jdbc.queryForObject("SELECT id_corretor_cliente FROM corretor_cliente WHERE id_cliente = ?", Integer.class, idCliente);
+
+        // duas apólices ATIVAS
+        jdbc.update("""
+            INSERT INTO apolice (numero_apolice, data_emissao, vigencia_inicio, vigencia_fim, valor, comissao_percentual, tipo_contrato,
+                                 id_corretor_cliente, id_produto, id_seguradora)
+            VALUES ('APO-C-ID-001', CURRENT_DATE, CURRENT_DATE, CURRENT_DATE + INTERVAL '1 year', 900.00, 10.00, 'ANUAL', ?, ?, ?)
+        """, ccId, prodId, segId);
+        jdbc.update("""
+            INSERT INTO apolice (numero_apolice, data_emissao, vigencia_inicio, vigencia_fim, valor, comissao_percentual, tipo_contrato,
+                                 id_corretor_cliente, id_produto, id_seguradora)
+            VALUES ('APO-C-ID-002', CURRENT_DATE, CURRENT_DATE, CURRENT_DATE + INTERVAL '1 year', 950.00, 9.50, 'ANUAL', ?, ?, ?)
+        """, ccId, prodId, segId);
+
+        Integer ap1 = jdbc.queryForObject("SELECT id_apolice FROM apolice WHERE numero_apolice = 'APO-C-ID-001'", Integer.class);
+        Integer ap2 = jdbc.queryForObject("SELECT id_apolice FROM apolice WHERE numero_apolice = 'APO-C-ID-002'", Integer.class);
+        jdbc.update("INSERT INTO apolice_status (id_apolice, status, data_inicio) VALUES (?, 'ATIVA', now())", ap1);
+        jdbc.update("INSERT INTO apolice_status (id_apolice, status, data_inicio) VALUES (?, 'ATIVA', now())", ap2);
+
+        // desativação deve falhar -> 409
+        mockMvc.perform(post("/api/clientes/{id}/desativar", idCliente))
+                .andExpect(status().isConflict());
+
+        // cancela as apólices
+        mockMvc.perform(post("/api/apolices/{id}/cancel", ap1))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/apolices/{id}/cancel", ap2))
+                .andExpect(status().isNoContent());
+
+        // desativação deve funcionar -> 204
+        mockMvc.perform(post("/api/clientes/{id}/desativar", idCliente))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(8)
+    void shouldListClientesWithBearerTokenAsAdmin() throws Exception {
+        String token = tokens.generateAccessToken(usuarioIdAdmin, "admin@example.com", "ADMIN", Map.of(), Instant.now());
+        mockMvc.perform(get("/api/clientes")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @Order(9)
+    void corretorShouldUpdateContatoWithBearerToken() throws Exception {
+        String token = tokens.generateAccessToken(usuarioIdCorretor, "corretor@example.com", "CORRETOR", Map.of(), Instant.now());
+
+        String contato = objectMapper.writeValueAsString(Map.of(
+                "email", "viaBearer@example.com",
+                "telefone", "(11) 96666-0000"
+        ));
+        mockMvc.perform(put("/api/clientes/{id}", clienteIdVinculado)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contato))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("viaBearer@example.com"))
+                .andExpect(jsonPath("$.telefone").value("(11) 96666-0000"));
     }
 }

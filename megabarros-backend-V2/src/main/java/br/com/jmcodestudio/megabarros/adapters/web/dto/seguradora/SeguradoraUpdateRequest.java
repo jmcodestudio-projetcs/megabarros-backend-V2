@@ -1,7 +1,8 @@
 package br.com.jmcodestudio.megabarros.adapters.web.dto.seguradora;
 
-import jakarta.validation.constraints.Size;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.NotBlank;
 
 public record SeguradoraUpdateRequest(
-        @Size(max = 100) String nomeSeguradora
+        @JsonProperty("nome") @NotBlank String nomeSeguradora
 ) {}
