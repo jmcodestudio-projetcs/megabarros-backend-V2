@@ -1,4 +1,4 @@
-package br.com.jmcodestudio.megabarros.adapters.web.controller;
+package br.com.jmcodestudio.megabarros.adapters.web.controller.auth;
 
 import br.com.jmcodestudio.megabarros.adapters.web.dto.auth.*;
 import br.com.jmcodestudio.megabarros.application.port.in.AuthenticateUseCase;

@@ -1,4 +1,4 @@
-package br.com.jmcodestudio.megabarros.adapters.web.controller;
+package br.com.jmcodestudio.megabarros.adapters.web.controller.cliente;
 
 import br.com.jmcodestudio.megabarros.adapters.web.dto.cliente.ClienteCreateRequest;
 import br.com.jmcodestudio.megabarros.adapters.web.dto.cliente.ClienteResponse;
