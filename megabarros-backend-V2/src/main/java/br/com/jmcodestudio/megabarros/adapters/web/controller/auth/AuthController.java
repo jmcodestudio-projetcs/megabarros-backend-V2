@@ -10,20 +10,21 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * AuthController serves as a REST controller providing endpoints for authentication-related operations.
- *
+ * <p>
  * It handles HTTP requests for login, token refresh, and password change functionalities,
  * utilizing use cases provided by the application core. The controller isolates
  * web-specific concerns from the business rules by leveraging data transfer objects (DTOs)
  * to manage input and output payloads.
- *
+ * <p>
  * Endpoints:
  * - /auth/login: Authenticates a user and returns an authentication response containing tokens and user details.
  * - /auth/refresh: Refreshes the user's access token based on a valid refresh token.
  * - /auth/change-password: Changes the password of the authenticated user after validating the current password.
- *
+ * <p>
  * O que faz: expõe endpoints HTTP e delega para os use cases.
  * Por que: controllers continuam finos, sem regra de negócio.
  */
+@CrossOrigin(origins = "http://localhost:5173")
 @RestController
 @RequestMapping("/auth")
 public class AuthController {

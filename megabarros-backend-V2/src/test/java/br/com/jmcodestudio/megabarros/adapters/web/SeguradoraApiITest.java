@@ -197,7 +197,7 @@ class SeguradoraApiITest {
         jdbc.update("INSERT INTO apolice_status (id_apolice, status, data_inicio) VALUES (?, 'ATIVA', now())", apId);
 
         // tenta deletar produto -> 409
-        mockMvc.perform(delete("/api/seguradoras/produtos/{id}", prodId))
+        mockMvc.perform(delete("/api/seguradoras/{idSeguradora}/produtos/{idProduto}", segId, prodId))
                 .andExpect(status().isConflict());
     }
 
@@ -218,4 +218,95 @@ class SeguradoraApiITest {
                 .andExpect(jsonPath("$.apoliceCount").value(0))
                 .andExpect(jsonPath("$.produtos[0].apoliceCount").value(0));
     }
+
+    @Test
+    @Order(5)
+    @WithMockUser(username = "admin@example.com", roles = {"ADMIN"})
+    void shouldUpdateProdutoSuccessfully() throws Exception {
+        // cria seguradora e produto
+        Integer segId = jdbc.queryForObject("INSERT INTO seguradora (nome_seguradora) VALUES ('Seg E') RETURNING id_seguradora", Integer.class);
+        Integer prodId = jdbc.queryForObject("INSERT INTO produto (nome_produto, tipo_produto, id_seguradora) VALUES ('Auto Básico', 'AUTO', ?) RETURNING id_produto", Integer.class, segId);
+
+        // atualiza o produto
+        String updateBody = objectMapper.writeValueAsString(Map.of(
+                "nomeProduto", "Auto Premium Atualizado",
+                "tipoProduto", "AUTO_PREMIUM"
+        ));
+
+        mockMvc.perform(put("/api/seguradoras/{idSeguradora}/produtos/{idProduto}", segId, prodId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.idProduto").value(prodId))
+                .andExpect(jsonPath("$.nomeProduto").value("Auto Premium Atualizado"))
+                .andExpect(jsonPath("$.tipoProduto").value("AUTO_PREMIUM"))
+                .andExpect(jsonPath("$.apoliceCount").value(0));
+
+        // verifica se foi realmente atualizado no banco
+        String nomeProduto = jdbc.queryForObject("SELECT nome_produto FROM produto WHERE id_produto = ?", String.class, prodId);
+        assertThat(nomeProduto).isEqualTo("Auto Premium Atualizado");
+    }
+
+    @Test
+    @Order(6)
+    @WithMockUser(username = "admin@example.com", roles = {"ADMIN"})
+    void shouldReturn404WhenUpdatingNonExistentProduto() throws Exception {
+        String updateBody = objectMapper.writeValueAsString(Map.of(
+                "nomeProduto", "Produto Inexistente",
+                "tipoProduto", "TIPO"
+        ));
+
+        mockMvc.perform(put("/api/seguradoras/{idSeguradora}/produtos/{idProduto}", 1, 99999)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @Order(7)
+    @WithMockUser(username = "corretor@example.com", roles = {"CORRETOR"})
+    void shouldReturn403WhenCorretorTriesToUpdateProduto() throws Exception {
+        // cria seguradora e produto
+        Integer segId = jdbc.queryForObject("INSERT INTO seguradora (nome_seguradora) VALUES ('Seg F') RETURNING id_seguradora", Integer.class);
+        Integer prodId = jdbc.queryForObject("INSERT INTO produto (nome_produto, tipo_produto, id_seguradora) VALUES ('Vida Simples', 'VIDA', ?) RETURNING id_produto", Integer.class, segId);
+
+        String updateBody = objectMapper.writeValueAsString(Map.of(
+                "nomeProduto", "Vida Premium",
+                "tipoProduto", "VIDA"
+        ));
+
+        mockMvc.perform(put("/api/seguradoras/{idSeguradora}/produtos/{idProduto}", segId, prodId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(8)
+    @WithMockUser(username = "admin@example.com", roles = {"ADMIN"})
+    void shouldPreserveExistingValuesWhenPartialUpdateProduto() throws Exception {
+        // cria seguradora e produto
+        Integer segId = jdbc.queryForObject("INSERT INTO seguradora (nome_seguradora) VALUES ('Seg G') RETURNING id_seguradora", Integer.class);
+        Integer prodId = jdbc.queryForObject("INSERT INTO produto (nome_produto, tipo_produto, id_seguradora) VALUES ('Residencial Plus', 'RESIDENCIAL', ?) RETURNING id_produto", Integer.class, segId);
+
+        // atualiza apenas o nome (tipoProduto será null no JSON, mas deve preservar o valor existente)
+        String updateBody = objectMapper.writeValueAsString(Map.of(
+                "nomeProduto", "Residencial Premium"
+                // tipoProduto não enviado (será null)
+        ));
+
+        mockMvc.perform(put("/api/seguradoras/{idSeguradora}/produtos/{idProduto}", segId, prodId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.idProduto").value(prodId))
+                .andExpect(jsonPath("$.nomeProduto").value("Residencial Premium"))
+                .andExpect(jsonPath("$.tipoProduto").value("RESIDENCIAL")) // deve preservar o tipo original
+                .andExpect(jsonPath("$.apoliceCount").value(0));
+
+        // verifica no banco
+        String tipoProduto = jdbc.queryForObject("SELECT tipo_produto FROM produto WHERE id_produto = ?", String.class, prodId);
+        assertThat(tipoProduto).isEqualTo("RESIDENCIAL");
+    }
 }
+

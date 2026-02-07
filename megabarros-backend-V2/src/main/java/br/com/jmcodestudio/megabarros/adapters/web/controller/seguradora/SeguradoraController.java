@@ -12,6 +12,7 @@ import br.com.jmcodestudio.megabarros.application.domain.seguradora.Seguradora;
 import br.com.jmcodestudio.megabarros.application.domain.seguradora.SeguradoraId;
 import br.com.jmcodestudio.megabarros.application.port.in.produto.CreateProdutoUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.produto.DeleteProdutoUseCase;
+import br.com.jmcodestudio.megabarros.application.port.in.produto.UpdateProdutoUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.seguradora.CreateSeguradoraUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.seguradora.DeleteSeguradoraUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.seguradora.ListSeguradorasUseCase;
@@ -36,6 +37,7 @@ public class SeguradoraController {
     private final DeleteSeguradoraUseCase deleteUC;
     private final ListSeguradorasUseCase listUC;
     private final CreateProdutoUseCase createProdutoUC;
+    private final UpdateProdutoUseCase updateProdutoUC;
     private final DeleteProdutoUseCase deleteProdutoUC;
     private final ApoliceQueryPort apoliceQuery;
     private final SeguradoraWebMapper webMapper;
@@ -45,6 +47,7 @@ public class SeguradoraController {
                                 DeleteSeguradoraUseCase deleteUC,
                                 ListSeguradorasUseCase listUC,
                                 CreateProdutoUseCase createProdutoUC,
+                                UpdateProdutoUseCase updateProdutoUC,
                                 DeleteProdutoUseCase deleteProdutoUC,
                                 ApoliceQueryPort apoliceQuery,
                                 SeguradoraWebMapper webMapper) {
@@ -53,6 +56,7 @@ public class SeguradoraController {
         this.deleteUC = deleteUC;
         this.listUC = listUC;
         this.createProdutoUC = createProdutoUC;
+        this.updateProdutoUC = updateProdutoUC;
         this.deleteProdutoUC = deleteProdutoUC;
         this.apoliceQuery = apoliceQuery;
         this.webMapper = webMapper;
@@ -117,13 +121,23 @@ public class SeguradoraController {
         domain = new Produto(null, new SeguradoraId(id), domain.nome(), domain.tipo());
         var created = createProdutoUC.create(domain);
         var resp = toProdutoResponseWithCount(created);
-        return ResponseEntity.created(URI.create("/api/produtos/" + resp.idProduto())).body(resp);
+        return ResponseEntity.created(URI.create("/api/seguradoras/" + id + "/produtos/" + resp.idProduto())).body(resp);
     }
 
     @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
-    @DeleteMapping("/produtos/{id}")
-    public ResponseEntity<Void> excluirProduto(@PathVariable Integer id) {
-        deleteProdutoUC.delete(new ProdutoId(id));
+    @PutMapping("/{idSeguradora}/produtos/{idProduto}")
+    public ResponseEntity<ProdutoResponse> atualizarProduto(@PathVariable Integer idSeguradora, @PathVariable Integer idProduto, @Valid @RequestBody ProdutoRequest req) {
+        Produto domain = webMapper.toDomain(req);
+        return updateProdutoUC.update(new ProdutoId(idProduto), domain)
+                .map(this::toProdutoResponseWithCount)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
+    @DeleteMapping("/{idSeguradora}/produtos/{idProduto}")
+    public ResponseEntity<Void> excluirProduto(@PathVariable Integer idSeguradora, @PathVariable Integer idProduto) {
+        deleteProdutoUC.delete(new ProdutoId(idProduto));
         return ResponseEntity.noContent().build();
     }
 
