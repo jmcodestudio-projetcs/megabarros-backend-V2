@@ -10,9 +10,11 @@ import br.com.jmcodestudio.megabarros.application.domain.apolice.ApoliceId;
 import br.com.jmcodestudio.megabarros.application.domain.parcela.Parcela;
 import br.com.jmcodestudio.megabarros.application.port.in.apolice.CancelApoliceUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.apolice.CreateApoliceUseCase;
+
 import br.com.jmcodestudio.megabarros.application.port.in.apolice.ListApolicesUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.apolice.UpdateApoliceUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.parcela.ParcelaUseCase;
+import br.com.jmcodestudio.megabarros.application.port.out.apolice.DeleteApoliceUseCase;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,6 +32,7 @@ public class ApoliceController {
     private final UpdateApoliceUseCase updateUC;
     private final ListApolicesUseCase listUC;
     private final CancelApoliceUseCase cancelUC;
+    private final DeleteApoliceUseCase deleteUC;
     private final ParcelaUseCase parcelaUC;
     private final ApoliceWebMapper webMapper;
 
@@ -37,12 +40,14 @@ public class ApoliceController {
                              UpdateApoliceUseCase updateUC,
                              ListApolicesUseCase listUC,
                              CancelApoliceUseCase cancelUC,
+                             DeleteApoliceUseCase deleteUC,
                              ParcelaUseCase parcelaUC,
                              ApoliceWebMapper webMapper) {
         this.createUC = createUC;
         this.updateUC = updateUC;
         this.listUC = listUC;
         this.cancelUC = cancelUC;
+        this.deleteUC = deleteUC;
         this.parcelaUC = parcelaUC;
         this.webMapper = webMapper;
     }
@@ -98,6 +103,7 @@ public class ApoliceController {
         return ResponseEntity.created(URI.create("/api/apolices/" + resp.idApolice())).body(resp);
     }
 
+    // Editar
     @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     @PutMapping("/{id}")
     public ResponseEntity<ApoliceResponse> atualizar(@PathVariable Integer id, @Valid @RequestBody ApoliceUpdateRequest req) {
@@ -107,10 +113,23 @@ public class ApoliceController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    // Cancelar
     @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     @PostMapping("/{id}/cancel")
     public ResponseEntity<Void> cancelar(@PathVariable Integer id, @RequestParam(required = false) String reason) {
         cancelUC.cancel(new ApoliceId(id), reason);
+        return ResponseEntity.noContent().build();
+    }
+
+    // Excluir
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> excluir(@PathVariable Integer id) {
+        // Retorna 404 caso não exista
+        if (listUC.getById(new ApoliceId(id)).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        deleteUC.deleteById(new ApoliceId(id));
         return ResponseEntity.noContent().build();
     }
 
@@ -132,8 +151,4 @@ public class ApoliceController {
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
-
-    // Removidos nesta fase:
-    // - adicionarBeneficiario
-    // - adicionarCobertura
 }
