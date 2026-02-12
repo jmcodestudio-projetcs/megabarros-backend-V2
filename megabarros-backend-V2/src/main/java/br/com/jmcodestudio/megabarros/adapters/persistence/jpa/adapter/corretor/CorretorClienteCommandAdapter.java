@@ -3,6 +3,7 @@ package br.com.jmcodestudio.megabarros.adapters.persistence.jpa.adapter.corretor
 import br.com.jmcodestudio.megabarros.adapters.persistence.jpa.repository.corretor.CorretorClienteCommandRepository;
 import br.com.jmcodestudio.megabarros.application.port.out.corretor.CorretorClienteCommandPort;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -16,14 +17,16 @@ public class CorretorClienteCommandAdapter implements CorretorClienteCommandPort
     }
 
     @Override
+    @Transactional
     public Integer createLink(Integer corretorId, Integer clienteId) {
-        // tenta retornar existente
+        // 1) tenta retornar existente
         Optional<Integer> existing = repo.findId(corretorId, clienteId);
         if (existing.isPresent()) return existing.get();
-        // insere idempotente e retorna id
-        Integer generated = repo.insertReturningId(corretorId, clienteId);
-        if (generated != null) return generated;
-        // em alguns bancos, RETURNING pode não trazer quando conflito; resolva novamente
+
+        // 2) insere idempotente (sem RETURNING)
+        repo.insertIgnore(corretorId, clienteId);
+
+        // 3) resolve novamente o id
         return repo.findId(corretorId, clienteId).orElse(null);
     }
 

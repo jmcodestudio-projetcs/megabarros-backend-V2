@@ -14,10 +14,11 @@ public interface CorretorClienteCommandRepository extends Repository<ClienteEnti
     @Query(value = "SELECT cc.id_corretor_cliente FROM corretor_cliente cc WHERE cc.id_corretor = :corretorId AND cc.id_cliente = :clienteId", nativeQuery = true)
     Optional<Integer> findId(@Param("corretorId") Integer corretorId, @Param("clienteId") Integer clienteId);
 
+    // Modifying sem RETURNING: retorna o número de linhas afetadas
     @Modifying
     @Transactional
-    @Query(value = "INSERT INTO corretor_cliente (id_corretor, id_cliente) VALUES (:corretorId, :clienteId) ON CONFLICT (id_corretor, id_cliente) DO NOTHING RETURNING id_corretor_cliente", nativeQuery = true)
-    Integer insertReturningId(@Param("corretorId") Integer corretorId, @Param("clienteId") Integer clienteId);
+    @Query(value = "INSERT INTO corretor_cliente (id_corretor, id_cliente) VALUES (:corretorId, :clienteId) ON CONFLICT (id_corretor, id_cliente) DO NOTHING", nativeQuery = true)
+    int insertIgnore(@Param("corretorId") Integer corretorId, @Param("clienteId") Integer clienteId);
 
     @Query(value = "SELECT COUNT(*) > 0 FROM corretor WHERE id_corretor = :corretorId", nativeQuery = true)
     boolean existsCorretor(@Param("corretorId") Integer corretorId);
