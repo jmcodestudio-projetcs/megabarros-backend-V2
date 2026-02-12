@@ -9,4 +9,5 @@ public record ParcelaRequest(
         @NotNull Integer numeroParcela,
         @NotNull LocalDate dataVencimento,
         @NotNull BigDecimal valorParcela
-) {}
+) {
+}
