@@ -66,4 +66,15 @@ public class CorretorClienteController {
         return ResponseEntity.created(URI.create("/api/corretor-clientes/" + id))
                 .body(Map.of("idCorretorCliente", id));
     }
+
+    // Novo: desvincula por id do vínculo
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
+    @DeleteMapping("/corretor-clientes/{id}")
+    public ResponseEntity<Void> deleteLink(@PathVariable Integer id) {
+        if (!commandPort.existsLink(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        commandPort.deleteLink(id);
+        return ResponseEntity.noContent().build();
+    }
 }

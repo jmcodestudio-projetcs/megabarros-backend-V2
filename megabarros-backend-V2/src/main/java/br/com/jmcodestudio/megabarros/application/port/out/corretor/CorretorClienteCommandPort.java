@@ -12,4 +12,8 @@ public interface CorretorClienteCommandPort {
     // Verificações simples de existência (opcional, para 404 amigável)
     boolean existsCorretor(Integer corretorId);
     boolean existsCliente(Integer clienteId);
+
+    // Vínculo por id
+    boolean existsLink(Integer corretorClienteId);
+    void deleteLink(Integer corretorClienteId);
 }

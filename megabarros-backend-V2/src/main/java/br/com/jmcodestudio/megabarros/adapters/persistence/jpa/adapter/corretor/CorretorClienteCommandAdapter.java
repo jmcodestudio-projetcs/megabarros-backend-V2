@@ -44,4 +44,15 @@ public class CorretorClienteCommandAdapter implements CorretorClienteCommandPort
     public boolean existsCliente(Integer clienteId) {
         return repo.existsCliente(clienteId);
     }
+
+    @Override
+    public boolean existsLink(Integer corretorClienteId) {
+        return repo.existsLink(corretorClienteId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteLink(Integer corretorClienteId) {
+        repo.deleteById(corretorClienteId);
+    }
 }

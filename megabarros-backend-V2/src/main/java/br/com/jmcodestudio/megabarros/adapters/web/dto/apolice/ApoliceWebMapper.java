@@ -8,6 +8,8 @@ import org.mapstruct.Mapper;
 import org.mapstruct.ReportingPolicy;
 
 import java.util.List;
+import java.util.Collections;
+import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface ApoliceWebMapper {
@@ -36,6 +38,19 @@ public interface ApoliceWebMapper {
 
     default Apolice toDomain(Integer id, ApoliceUpdateRequest req) {
         if (req == null) return null;
+        List<Parcela> parcelas = req.parcelas() == null ? List.of()
+                : req.parcelas().stream()
+                .map(p -> new Parcela(
+                        p.idParcela(),
+                        new ApoliceId(id),
+                        null,
+                        p.dataVencimento(),
+                        p.valorParcela(),
+                        Boolean.TRUE.equals(p.remover()) ? "REMOVER" : null,
+                        null
+                ))
+                .collect(Collectors.toList());
+
         return new Apolice(
                 new ApoliceId(id),
                 req.numeroApolice(),
@@ -49,7 +64,7 @@ public interface ApoliceWebMapper {
                 req.idProduto(),
                 req.idSeguradora(),
                 null,
-                List.of(),
+                parcelas,
                 List.of(),
                 List.of()
         );

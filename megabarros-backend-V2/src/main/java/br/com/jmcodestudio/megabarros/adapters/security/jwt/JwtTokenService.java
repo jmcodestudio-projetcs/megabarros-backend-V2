@@ -67,13 +67,14 @@ public class JwtTokenService implements TokenServicePort {
     @Override
     public String generateAccessToken(Long userId, String email, String role, Map<String, Object> extraClaims, Instant now) {
         var exp = Date.from(now.plusSeconds(accessExpSeconds));
+        var normalizedRole = role == null ? null : role.toUpperCase();
         var builder = Jwts.builder()
                 .setIssuer(issuer)
                 .setAudience(audience)
                 .setSubject(String.valueOf(userId))
                 .setExpiration(exp)
                 .setIssuedAt(Date.from(now))
-                .addClaims(Map.of("email", email, "role", role, "typ", "access"));
+                .addClaims(Map.of("email", email, "role", normalizedRole, "typ", "access"));
         if (extraClaims != null) builder.addClaims(extraClaims);
         return builder.signWith(key, SignatureAlgorithm.HS256).compact();
     }

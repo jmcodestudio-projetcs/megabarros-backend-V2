@@ -1,10 +1,13 @@
 package br.com.jmcodestudio.megabarros.adapters.web.controller.corretor;
 
+import br.com.jmcodestudio.megabarros.adapters.web.dto.cliente.ClienteResponse;
 import br.com.jmcodestudio.megabarros.adapters.web.dto.corretor.CorretorCreateRequest;
 import br.com.jmcodestudio.megabarros.adapters.web.dto.corretor.CorretorResponse;
 import br.com.jmcodestudio.megabarros.adapters.web.dto.corretor.CorretorUpdateRequest;
+import br.com.jmcodestudio.megabarros.adapters.web.dto.mapper.cliente.ClienteWebMapper;
 import br.com.jmcodestudio.megabarros.adapters.web.dto.mapper.corretor.CorretorWebMapper;
 import br.com.jmcodestudio.megabarros.application.domain.corretor.CorretorId;
+import br.com.jmcodestudio.megabarros.application.port.in.cliente.ListClientesUseCase;
 import br.com.jmcodestudio.megabarros.application.port.in.corretor.*;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -24,20 +27,26 @@ public class CorretorController {
     private final DeleteCorretorUseCase deleteUC;
     private final GetCorretorUseCase getUC;
     private final GetCurrentCorretorUseCase getCurrentUC;
+    private final ListClientesUseCase listClientesUC;
     private final CorretorWebMapper webMapper;
+    private final ClienteWebMapper clienteWebMapper;
 
     public CorretorController(CreateCorretorUseCase createUC,
                               UpdateCorretorUseCase updateUC,
                               DeleteCorretorUseCase deleteUC,
                               GetCorretorUseCase getUC,
                               GetCurrentCorretorUseCase getCurrentUC,
-                              CorretorWebMapper webMapper) {
+                              ListClientesUseCase listClientesUC,
+                              CorretorWebMapper webMapper,
+                              ClienteWebMapper clienteWebMapper) {
         this.createUC = createUC;
         this.updateUC = updateUC;
         this.deleteUC = deleteUC;
         this.getUC = getUC;
         this.getCurrentUC = getCurrentUC;
+        this.listClientesUC = listClientesUC;
         this.webMapper = webMapper;
+        this.clienteWebMapper = clienteWebMapper;
     }
 
     @GetMapping
@@ -61,6 +70,15 @@ public class CorretorController {
                 .map(webMapper::toResponse)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PreAuthorize("hasRole('CORRETOR')")
+    @GetMapping("/me/clientes")
+    public ResponseEntity<List<ClienteResponse>> meusClientes() {
+        var list = listClientesUC.listMine().stream()
+                .map(clienteWebMapper::toResponse)
+                .toList();
+        return ResponseEntity.ok(list);
     }
 
     @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")

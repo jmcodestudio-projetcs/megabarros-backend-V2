@@ -1,7 +1,10 @@
 package br.com.jmcodestudio.megabarros.adapters.web.dto.apolice;
 
+import br.com.jmcodestudio.megabarros.adapters.web.dto.parcela.ParcelaUpdateRequest;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 public record ApoliceUpdateRequest(
         String numeroApolice,
@@ -13,5 +16,7 @@ public record ApoliceUpdateRequest(
         String tipoContrato,
         Integer idCorretorCliente,
         Integer idProduto,
-        Integer idSeguradora
-) {}
+        Integer idSeguradora,
+        List<ParcelaUpdateRequest> parcelas
+) {
+}

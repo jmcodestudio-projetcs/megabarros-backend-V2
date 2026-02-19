@@ -124,6 +124,33 @@ public class ApoliceUseCasesImpl implements
                     existing.statusAtual(), existing.parcelas(), existing.coberturas(), existing.beneficiarios()
             );
             Apolice saved = repo.save(merged);
+
+            if (updates.parcelas() != null && !updates.parcelas().isEmpty()) {
+                for (Parcela p : updates.parcelas()) {
+                    if (p.id() == null) {
+                        continue;
+                    }
+
+                    if ("REMOVER".equalsIgnoreCase(p.statusPagamento())) {
+                        repo.deleteParcelaById(p.id());
+                        continue;
+                    }
+
+                    repo.findParcelaById(p.id()).ifPresent(existingParcela -> {
+                        Parcela mergedParcela = new Parcela(
+                                existingParcela.id(),
+                                existingParcela.apoliceId(),
+                                existingParcela.numeroParcela(),
+                                p.dataVencimento() != null ? p.dataVencimento() : existingParcela.dataVencimento(),
+                                p.valorParcela() != null ? p.valorParcela() : existingParcela.valorParcela(),
+                                existingParcela.statusPagamento(),
+                                existingParcela.dataPagamento()
+                        );
+                        repo.saveParcela(mergedParcela);
+                    });
+                }
+            }
+
             log.info("apolice.update success actor={} id={}", actor, id.value());
             return saved;
         });

@@ -25,4 +25,12 @@ public interface CorretorClienteCommandRepository extends Repository<ClienteEnti
 
     @Query(value = "SELECT COUNT(*) > 0 FROM cliente WHERE id_cliente = :clienteId", nativeQuery = true)
     boolean existsCliente(@Param("clienteId") Integer clienteId);
+
+    @Query(value = "SELECT COUNT(*) > 0 FROM corretor_cliente WHERE id_corretor_cliente = :id", nativeQuery = true)
+    boolean existsLink(@Param("id") Integer id);
+
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM corretor_cliente WHERE id_corretor_cliente = :id", nativeQuery = true)
+    int deleteById(@Param("id") Integer id);
 }
