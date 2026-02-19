@@ -159,7 +159,7 @@ public class ApoliceUseCasesImpl implements
     }
 
     @Override
-    public Optional<Parcela> markPaid(Integer parcelaId) {
+    public Optional<Parcela> markPaid(Integer parcelaId, LocalDate dataPagamento) {
         ensureNotCorretor();
         return repo.findParcelaById(parcelaId).map(existing -> {
             Parcela paid = new Parcela(
@@ -169,7 +169,7 @@ public class ApoliceUseCasesImpl implements
                     existing.dataVencimento(),
                     existing.valorParcela(),
                     "PAGA",
-                    java.time.LocalDate.now()
+                    dataPagamento
             );
             repo.saveParcela(paid);
             return paid;

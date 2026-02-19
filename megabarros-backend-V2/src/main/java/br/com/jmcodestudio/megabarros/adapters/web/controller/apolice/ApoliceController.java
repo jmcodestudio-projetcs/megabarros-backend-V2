@@ -4,6 +4,7 @@ import br.com.jmcodestudio.megabarros.adapters.web.dto.apolice.ApoliceCreateRequ
 import br.com.jmcodestudio.megabarros.adapters.web.dto.apolice.ApoliceResponse;
 import br.com.jmcodestudio.megabarros.adapters.web.dto.apolice.ApoliceUpdateRequest;
 import br.com.jmcodestudio.megabarros.adapters.web.dto.apolice.ApoliceWebMapper;
+import br.com.jmcodestudio.megabarros.adapters.web.dto.parcela.ParcelaPayRequest;
 import br.com.jmcodestudio.megabarros.adapters.web.dto.parcela.ParcelaRequest;
 import br.com.jmcodestudio.megabarros.application.domain.apolice.Apolice;
 import br.com.jmcodestudio.megabarros.application.domain.apolice.ApoliceId;
@@ -143,11 +144,15 @@ public class ApoliceController {
                 .body(new ApoliceResponse.ParcelaResponse(saved.id(), saved.numeroParcela(), saved.dataVencimento(), saved.valorParcela(), saved.statusPagamento(), saved.dataPagamento()));
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     @PostMapping("/parcelas/{parcelaId}/pay")
-    public ResponseEntity<ApoliceResponse.ParcelaResponse> pagarParcela(@PathVariable Integer parcelaId) {
-        return parcelaUC.markPaid(parcelaId)
-                .map(p -> new ApoliceResponse.ParcelaResponse(p.id(), p.numeroParcela(), p.dataVencimento(), p.valorParcela(), p.statusPagamento(), p.dataPagamento()))
+    public ResponseEntity<ApoliceResponse.ParcelaResponse> pagarParcela(
+            @PathVariable Integer parcelaId,
+            @Valid @RequestBody ParcelaPayRequest req
+    ) {
+        return parcelaUC.markPaid(parcelaId, req.dataPagamento())
+                .map(p -> new ApoliceResponse.ParcelaResponse(
+                        p.id(), p.numeroParcela(), p.dataVencimento(),
+                        p.valorParcela(), p.statusPagamento(), p.dataPagamento()))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
