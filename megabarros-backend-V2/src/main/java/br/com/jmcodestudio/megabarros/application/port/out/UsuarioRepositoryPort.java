@@ -1,5 +1,6 @@
 package br.com.jmcodestudio.megabarros.application.port.out;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -11,8 +12,10 @@ import java.util.Optional;
 public interface UsuarioRepositoryPort {
     Optional<UsuarioRecord> findByEmail(String email);
     Optional<UsuarioRecord> findById(Long id);
+    List<UsuarioRecord> findAll();
     UsuarioRecord save(UsuarioRecord usuario);
     void updatePassword(Long id, String newHash, boolean mustChangePassword);
+    boolean deleteById(Long id);
 
     record UsuarioRecord(Long id, String nome, String email, String senhaHash, String perfil, boolean ativo, boolean mustChangePassword) {}
 }

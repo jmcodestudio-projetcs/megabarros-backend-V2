@@ -6,6 +6,7 @@ import br.com.jmcodestudio.megabarros.application.port.out.UsuarioRepositoryPort
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -47,6 +48,12 @@ public class UsuarioRepositoryAdapter implements UsuarioRepositoryPort {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<UsuarioRecord> findAll() {
+        return repo.findAll().stream().map(this::map).toList();
+    }
+
+    @Override
     @Transactional
     public UsuarioRecord save(UsuarioRecord usuario) {
         var e = new UsuarioEntity();
@@ -68,6 +75,16 @@ public class UsuarioRepositoryAdapter implements UsuarioRepositoryPort {
         e.setSenhaHash(newHash);
         e.setMustChangePassword(mustChangePassword);
         repo.save(e);
+    }
+
+    @Override
+    @Transactional
+    public boolean deleteById(Long id) {
+        if (repo.existsById(id)) {
+            repo.deleteById(id);
+            return true;
+        }
+        return false;
     }
 
     private UsuarioRecord map(UsuarioEntity e) {
